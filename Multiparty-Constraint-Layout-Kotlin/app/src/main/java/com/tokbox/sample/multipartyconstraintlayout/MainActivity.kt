@@ -3,27 +3,21 @@ package com.tokbox.sample.multipartyconstraintlayout
 import android.Manifest
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
-import com.opentok.android.BaseVideoRenderer
-import com.opentok.android.OpentokError
-import com.opentok.android.Publisher
-import com.opentok.android.PublisherKit
+import com.opentok.android.*
 import com.opentok.android.PublisherKit.PublisherListener
-import com.opentok.android.Session
 import com.opentok.android.Session.SessionListener
 import com.opentok.android.Session.SessionOptions
-import com.opentok.android.Stream
-import com.opentok.android.Subscriber
 import com.tokbox.sample.multipartyconstraintlayout.MainActivity
 import com.tokbox.sample.multipartyconstraintlayout.OpenTokConfig.description
 import com.tokbox.sample.multipartyconstraintlayout.OpenTokConfig.isValid
 import pub.devrel.easypermissions.AfterPermissionGranted
 import pub.devrel.easypermissions.EasyPermissions
 import pub.devrel.easypermissions.EasyPermissions.PermissionCallbacks
-import java.util.ArrayList
-import java.util.HashMap
 
 class MainActivity : AppCompatActivity(), PermissionCallbacks {
     private var session: Session? = null
@@ -31,6 +25,7 @@ class MainActivity : AppCompatActivity(), PermissionCallbacks {
     private val subscribers = ArrayList<Subscriber>()
     private val subscriberStreams = HashMap<Stream, Subscriber>()
     private lateinit var container: ConstraintLayout
+//    private val ignoredList = HashSet<String>()
 
     private val publisherListener: PublisherListener = object : PublisherListener {
         override fun onStreamCreated(publisherKit: PublisherKit, stream: Stream) {
@@ -48,12 +43,16 @@ class MainActivity : AppCompatActivity(), PermissionCallbacks {
     private val sessionListener: SessionListener = object : SessionListener {
         override fun onConnected(session: Session) {
             Log.d(TAG, "onConnected: Connected to session ${session.sessionId}")
+            showRetry(false)
             session.publish(publisher)
         }
 
         override fun onDisconnected(session: Session) {
             Log.d(TAG, "onDisconnected: disconnected from session ${session.sessionId}")
             this@MainActivity.session = null
+//            ignoredList.add(session.connection.connectionId)
+//            publisher?.stream?.streamId?.let { ignoredList.add(it) }
+            showRetry(true)
         }
 
         override fun onError(session: Session, opentokError: OpentokError) {
@@ -62,7 +61,12 @@ class MainActivity : AppCompatActivity(), PermissionCallbacks {
 
         override fun onStreamReceived(session: Session, stream: Stream) {
             Log.d(TAG, "onStreamReceived: New stream ${stream.streamId} in session ${session.sessionId}")
+//            if (ignoredList.contains(stream.streamId)) {
+//                Log.d(TAG, "onStreamReceived: IGNORING stream ${stream.streamId} in session ${session.sessionId}")
+//                return
+//            }
             val subscriber = Subscriber.Builder(this@MainActivity, stream).build()
+            session.setReconnectionListener(reconnectionListener)
             session.subscribe(subscriber)
             subscribers.add(subscriber)
             subscriberStreams[stream] = subscriber
@@ -87,6 +91,16 @@ class MainActivity : AppCompatActivity(), PermissionCallbacks {
         }
     }
 
+    private val reconnectionListener: Session.ReconnectionListener = object : Session.ReconnectionListener {
+        override fun onReconnecting(p0: Session?) {
+            Log.d(TAG, "onReconnecting")
+        }
+
+        override fun onReconnected(p0: Session?) {
+            Log.d(TAG, "onReconnected")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -96,6 +110,9 @@ class MainActivity : AppCompatActivity(), PermissionCallbacks {
         }
         container = findViewById(R.id.main_container)
         requestPermissions()
+        findViewById<Button>(R.id.button_retry).setOnClickListener {
+            requestPermissions()
+        }
     }
 
     override fun onResume() {
@@ -146,9 +163,15 @@ class MainActivity : AppCompatActivity(), PermissionCallbacks {
 
     private fun startPublisherPreview() {
         publisher = Publisher.Builder(this).build()
+        publisher?.publishAudio = false
         publisher?.setPublisherListener(publisherListener)
         publisher?.setStyle(BaseVideoRenderer.STYLE_VIDEO_SCALE, BaseVideoRenderer.STYLE_VIDEO_FILL)
         publisher?.startPreview()
+    }
+
+    private fun showRetry(showRetry: Boolean) {
+        findViewById<ConstraintLayout>(R.id.main_container).visibility = if (showRetry) View.GONE else View.VISIBLE
+        findViewById<Button>(R.id.button_retry).visibility = if (showRetry) View.VISIBLE else View.GONE
     }
 
     @AfterPermissionGranted(PERMISSIONS_REQUEST_CODE)
@@ -279,7 +302,7 @@ class MainActivity : AppCompatActivity(), PermissionCallbacks {
     private fun finishWithMessage(message: String) {
         Log.e(TAG, message)
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        finish()
+        //finish()
     }
 
     companion object {
